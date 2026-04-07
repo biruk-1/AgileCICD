@@ -54,6 +54,7 @@ export default function About() {
             <div className="icon">{t.icon}</div>
             <h3>{t.name}</h3>
             <p>{t.desc}</p>
+            <p>{t.desc}</p>
           </div>
         ))}
       </div>
