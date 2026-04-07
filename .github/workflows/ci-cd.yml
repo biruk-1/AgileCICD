@@ -130,7 +130,7 @@ jobs:
       # ── Step 6: Smoke-test the deployed API ───────────────
       #  This is the intentional test that will FAIL the pipeline
       #  if the /api/health endpoint does not return HTTP 200.
-      - name: 🔍 Smoke-test: GET /api/health must return 200
+      - name: "🔍 Smoke-test: GET /api/health must return 200"
         run: |
           RESPONSE=$(curl -s http://localhost:5000/api/health)
           HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/health)
@@ -143,7 +143,7 @@ jobs:
           echo "✅ Smoke test passed — /api/health returned 200"
 
       # ── Step 7: Smoke-test the /api/message endpoint ──────
-      - name: 🔍 Smoke-test: GET /api/message must contain 'message' key
+      - name: "🔍 Smoke-test: GET /api/message must contain 'message' key"
         run: |
           RESPONSE=$(curl -s http://localhost:5000/api/message)
           echo "Response: $RESPONSE"
