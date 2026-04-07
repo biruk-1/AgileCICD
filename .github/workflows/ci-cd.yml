@@ -1,0 +1,164 @@
+# ============================================================
+#  CI/CD Pipeline — Full-Stack Demo
+#  Trigger: every push to the `main` branch
+#
+#  Stages:
+#    1. ci  — install, test, build
+#    2. cd  — build Docker images, start containers (simulate deploy)
+# ============================================================
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20'
+
+jobs:
+  # ──────────────────────────────────────────────────────────
+  #  JOB 1 · ci
+  #  Runs on every push / PR.
+  #  Installs, tests and builds the application.
+  # ──────────────────────────────────────────────────────────
+  ci:
+    name: 🔬 CI — Install · Test · Build
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Step 1: Get the code ──────────────────────────────
+      - name: 📥 Checkout source code
+        uses: actions/checkout@v4
+
+      # ── Step 2: Set up the correct Node.js version ────────
+      - name: ⚙️ Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      # ── Step 3a: Install backend dependencies ─────────────
+      - name: 📦 Install backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      # ── Step 3b: Install frontend dependencies ────────────
+      - name: 📦 Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # ── Step 4a: Run backend tests ────────────────────────
+      #  This step WILL FAIL the pipeline if any test fails.
+      #  The /api/health endpoint is tested here — critical gate.
+      - name: 🧪 Run backend tests (Jest)
+        working-directory: backend
+        run: npm test
+
+      # ── Step 4b: Run frontend tests ───────────────────────
+      - name: 🧪 Run frontend tests (Vitest)
+        working-directory: frontend
+        run: npm test
+
+      # ── Step 5: Build frontend production bundle ──────────
+      - name: 🏗️ Build frontend (Vite)
+        working-directory: frontend
+        run: npm run build
+
+      # ── Step 6: Upload build artifact ─────────────────────
+      - name: 📤 Upload frontend build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  # ──────────────────────────────────────────────────────────
+  #  JOB 2 · cd
+  #  Runs only on pushes to main (not on PRs).
+  #  Depends on the ci job passing.
+  #  Builds Docker images and runs them to simulate deployment.
+  # ──────────────────────────────────────────────────────────
+  cd:
+    name: 🚀 CD — Docker Build · Deploy Simulation
+    runs-on: ubuntu-latest
+    needs: ci
+    # Only deploy from the main branch, not from PRs
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      # ── Step 1: Get the code ──────────────────────────────
+      - name: 📥 Checkout source code
+        uses: actions/checkout@v4
+
+      # ── Step 2: Build backend Docker image ────────────────
+      - name: 🐳 Build backend Docker image
+        run: docker build -t cicd-demo-backend:latest ./backend
+
+      # ── Step 3: Build frontend Docker image ───────────────
+      - name: 🐳 Build frontend Docker image
+        run: docker build -t cicd-demo-frontend:latest ./frontend
+
+      # ── Step 4: Start all services with Docker Compose ────
+      #  This simulates a production deployment.
+      #  Backend → port 5000  |  Frontend → port 3000
+      - name: 🚀 Start containers (deployment simulation)
+        run: docker compose up -d
+
+      # ── Step 5: Wait for backend to be ready ──────────────
+      - name: ⏳ Wait for backend health check
+        run: |
+          echo "Waiting for backend to become healthy..."
+          for i in $(seq 1 15); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/health || echo "000")
+            echo "Attempt $i — HTTP $STATUS"
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ Backend is healthy!"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "❌ Backend did not become healthy in time."
+          docker compose logs backend
+          exit 1
+
+      # ── Step 6: Smoke-test the deployed API ───────────────
+      #  This is the intentional test that will FAIL the pipeline
+      #  if the /api/health endpoint does not return HTTP 200.
+      - name: 🔍 Smoke-test: GET /api/health must return 200
+        run: |
+          RESPONSE=$(curl -s http://localhost:5000/api/health)
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:5000/api/health)
+          echo "Response body : $RESPONSE"
+          echo "HTTP status   : $HTTP_CODE"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "❌ SMOKE TEST FAILED — expected 200, got $HTTP_CODE"
+            exit 1
+          fi
+          echo "✅ Smoke test passed — /api/health returned 200"
+
+      # ── Step 7: Smoke-test the /api/message endpoint ──────
+      - name: 🔍 Smoke-test: GET /api/message must contain 'message' key
+        run: |
+          RESPONSE=$(curl -s http://localhost:5000/api/message)
+          echo "Response: $RESPONSE"
+          echo "$RESPONSE" | grep -q '"message"' || (echo "❌ 'message' key not found in response" && exit 1)
+          echo "✅ /api/message smoke test passed"
+
+      # ── Step 8: Print running containers ──────────────────
+      - name: 📋 Log running containers
+        run: docker compose ps
+
+      # ── Step 9: Show container logs ───────────────────────
+      - name: 📋 Print backend logs
+        run: docker compose logs backend
+
+      # ── Step 10: Tear down containers ─────────────────────
+      - name: 🧹 Tear down containers
+        if: always()
+        run: docker compose down
