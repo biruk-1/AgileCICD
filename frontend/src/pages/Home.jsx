@@ -35,6 +35,12 @@ export default function Home() {
   return (
     <div>
       <h1 className="page-title">CI/CD Demo Project</h1>
+      <div className="page-subtitle">
+        <h1>welccome every body </h1>
+        <h2>we are happy to see you here</h2>
+        <h1>welccome every body </h1>
+        <h2>we are happy to see you here</h2>
+      </div>
       <p className="page-subtitle">A full-stack learning simulation of real-world DevOps flow.</p>
 
       {/* Live API Demo */}
