@@ -28,6 +28,7 @@ export default function Contact() {
   return (
     <div>
       <h1 className="page-title">Contact</h1>
+      <h2 className="page-title">Contact us please </h2>
       <p className="page-subtitle">Send a message &mdash; submissions are mocked for this demo.</p>
 
       <div className="card" style={{ maxWidth: 540 }}>
